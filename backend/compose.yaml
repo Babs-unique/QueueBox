@@ -1,0 +1,58 @@
+# Comments are provided throughout this file to help you get started.
+# If you need more help, visit the Docker Compose reference guide at
+# https://docs.docker.com/go/compose-spec-reference/
+
+# Here the instructions define your application as a service called "server".
+# This service is built from the Dockerfile in the current directory.
+# You can add other services your application may depend on here, such as a
+# database or a cache. For examples, see the Awesome Compose repository:
+# https://github.com/docker/awesome-compose
+
+# services:
+#   server:
+#     build:
+#       context: .
+#     command: npm run start:dev
+#     environment:
+#       NODE_ENV: development
+#       DATABASE_URL: ${DATABASE_URL}
+#     ports:
+#       - "3040:3040"
+#     depends_on:
+#       db:
+#         condition: service_healthy
+#     develop:
+#       watch:
+#         - action: sync
+#           path: ./src
+#           target: /usr/src/app/src
+#           initial_sync: true
+#         - action: rebuild
+#           path: package.json
+#         - action: rebuild
+#           path: package-lock.json
+#         - action: sync
+#           path: ./prisma
+#           target: /usr/src/app/prisma
+#           initial_sync: true
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: always
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  db-data:
