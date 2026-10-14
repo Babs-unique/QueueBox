@@ -5,12 +5,19 @@ import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module'; 
 import { ThrottlerModule } from '@nestjs/throttler';
+import { BullModule } from '@nestjs/bullmq'
+import { BillingController } from './billing/billing.controller';
+import { BillingService } from './billing/billing.service';
+import { BillingModule } from './billing/billing.module';
+import { CustomerController } from './customer/customer.controller';
+import { CustomerService } from './customer/customer.service';
+import { CustomerModule } from './customer/customer.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ 
       isGlobal: true,
-      envFilePath: '.env'
+      envFilePath: '.env',
      }), 
     ThrottlerModule.forRoot({
       throttlers: [
@@ -20,10 +27,16 @@ import { ThrottlerModule } from '@nestjs/throttler';
         },
       ],
     }),
+    BullModule.forRoot({
+      connection: {
+        host: 'localhost',
+        port: 6379,
+      },
+    }),
     PrismaModule, 
-    AuthModule, 
+    AuthModule, BillingModule, CustomerModule, 
   ],
-  controllers: [AppController],
-  providers: [AppService],
+  controllers: [AppController, BillingController, CustomerController],
+  providers: [AppService, BillingService, CustomerService],
 })
 export class AppModule {}
