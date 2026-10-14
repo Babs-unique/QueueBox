@@ -10,7 +10,6 @@ import { User } from '../../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { loginDtos, updateUserDtos, userDtos } from './dto/user.dto.js';
 
-// Strictly maps to your exact User schema minus internal authentication fields
 type PublicUser = Omit<User, 'password' | 'refreshToken' | 'expiresAt' | 'isRevoked'>;
 
 @Injectable()
@@ -79,7 +78,7 @@ export class AuthService {
       data: {
         refreshToken: hashedRefreshToken,
         isRevoked: false,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // Matches 7d expiration
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), 
       },
     });
 
@@ -93,16 +92,14 @@ export class AuthService {
   async refreshTokens(userId: string, rawRefreshToken: string): Promise<{ accessToken: string; refreshToken: string }> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
 
-    // Validate if user exists, token is revoked, or if it has explicitly expired in database
     if (!user || !user.refreshToken || user.isRevoked || (user.expiresAt && user.expiresAt < new Date())) {
       throw new UnauthorizedException('Access denied. Token is invalid or expired.');
     }
 
-    // Verify token footprint matching
+
     const isMatch = await bcrypt.compare(rawRefreshToken, user.refreshToken);
     if (!isMatch) throw new UnauthorizedException('Access denied. Invalid token trace.');
 
-    // Enforce Token Rotation (New Access + New Refresh Pairs)
     const newAccessToken = await this.generateAccessToken(user.id, user.email);
     const newRefreshToken = await this.generateRefreshToken(user.id, user.email);
 

@@ -12,15 +12,102 @@ datasource db {
   provider = "postgresql"
 }
 
-
 model User {
-  id        String    @id @default(uuid())
-  email     String    @unique
+  id           String    @id @default(uuid())
+  email        String    @unique
+  name         String
+  password     String
+  refreshToken String?
+  expiresAt    DateTime?
+  isRevoked    Boolean   @default(false)
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  customers         Customer[]
+  billingOperations BillingOperation[]
+}
+
+model Customer {
+  id        String   @id @default(uuid())
   name      String
-  password  String
-  refreshToken  String?
-  expiresAt  DateTime?
-  isRevoked  Boolean   @default(false)
-  deletedAt DateTime?
-  createdAt DateTime  @default(now())
+  email     String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  invoices    Invoice[]
+  invoiceJobs InvoiceJob[]
+
+  @@unique([userId, email])
+}
+
+model BillingOperation {
+  id             String                 @id @default(uuid())
+  userId         String
+  user           User                   @relation(fields: [userId], references: [id])
+  idempotencyKey String
+  billingPeriod  DateTime
+  status         BillingOperationStatus
+  totalJobs      Int
+  processingJobs Int                    @default(0)
+  completedJobs  Int                    @default(0)
+  failedJobs     Int                    @default(0)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  invoiceJobs InvoiceJob[]
+
+  @@unique([userId, idempotencyKey])
+}
+
+model InvoiceJob {
+  id                 String           @id @default(uuid())
+  billingOperationId String
+  customerId         String
+  invoiceId          String
+  status             InvoiceJobStatus @default(QUEUED)
+  lastError          String?
+  processedAt        DateTime?
+
+  billingOperation BillingOperation @relation(fields: [billingOperationId], references: [id])
+  customer         Customer         @relation(fields: [customerId], references: [id])
+  invoice          Invoice          @relation(fields: [invoiceId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Invoice {
+  id            String        @id @default(uuid())
+  customerId    String
+  customer      Customer      @relation(fields: [customerId], references: [id])
+  amount        Decimal       @db.Decimal(10, 2)
+  billingPeriod DateTime
+  dueDate       DateTime
+  status        InvoiceStatus @default(GENERATED)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  invoiceJobs   InvoiceJob[]
+
+  @@unique([customerId, billingPeriod])
+}
+
+enum InvoiceJobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum BillingOperationStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  PARTIALLY_COMPLETED
+}
+
+enum InvoiceStatus {
+  GENERATED
 }

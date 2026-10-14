@@ -24,8 +24,6 @@ type RefreshAuthenticatedRequest = AuthenticatedRequest & {
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
-
-  // Helper method for standard cookie settings
   private setTokenCookies(res: Response, accessToken: string, refreshToken: string) {
     res.cookie(AUTH_COOKIE_NAME, accessToken, {
       httpOnly: true,
@@ -54,7 +52,6 @@ export class AuthController {
     return { message: 'Successfully logged in', user: result.user };
   }
 
-  // Uses Refresh-specific type configuration safely
   @UseGuards(RefreshTokenGuard)
   @Post('refresh')
   async refresh(@Req() req: RefreshAuthenticatedRequest, @Res({ passthrough: true }) res: Response) {
