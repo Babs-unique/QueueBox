@@ -1,7 +1,7 @@
 import { Controller, Body,  Req, HttpException, HttpStatus, ParseUUIDPipe, Get, Post, UseGuards, Param, Patch, Delete} from '@nestjs/common';
 import type { Response } from 'express'
 import { CustomerService } from './customer.service';
-import { AuthenticatedRequest } from '../utils/auth-request'
+import type { AuthenticatedRequest } from '../utils/auth-request'
 import { AuthGuard } from '../auth/guards/auth.guard';
 import { customerDtos } from './dto/customer.dto'
 
@@ -13,16 +13,16 @@ export class CustomerController {
 
     @UseGuards(AuthGuard)
     @Post()
-    create(@Body() customerDto:customerDtos, @Req  req:AuthenticatedRequest) {
+    create(@Body() customerDto:customerDtos, @Req()  req:AuthenticatedRequest) {
         const userId = req.user.sub
          if(!userId){
             throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
         }
-        return this.customerService.create(customerDto, userId);
+        return this.customerService.createCustomer(userId , customerDto);
     }
     @UseGuards(AuthGuard)
     @Get()
-    getCustomers(@Req req:AuthenticatedRequest){
+    getCustomers(@Req() req:AuthenticatedRequest){
         const userId = req.user.sub
         if(!userId){
             throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
@@ -31,25 +31,25 @@ export class CustomerController {
     }
     @UseGuards(AuthGuard)
     @Get(':id')
-    getCustomer(@Param('id' , ParseUUIDPipe) id:string, @Req req:AuthenticatedRequest){
+    getCustomer(@Param('id' , ParseUUIDPipe) id:string, @Req() req:AuthenticatedRequest){
         const userId = req.user.sub
         if(!userId){
             throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
         }
-        return this.customerService.getCustomer(id, userId);
+        return this.customerService.getCustomerById(id, userId);
     }
     @UseGuards(AuthGuard)
     @Patch(':id')
-    updateCustomer(@Param('id' , ParseUUIDPipe) id:string, @Body() customerDto:customerDtos, @Req req:AuthenticatedRequest){
+    updateCustomer(@Param('id' , ParseUUIDPipe) id:string, @Body() customerDto:customerDtos, @Req() req:AuthenticatedRequest){
         const userId = req.user.sub
         if(!userId){
             throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
         }
-        return this.customerService.updateCustomer(id, customerDto, userId);
+        return this.customerService.updateCustomer(userId , id , customerDto);
     }
     @UseGuards(AuthGuard)
     @Delete(':id')
-    deleteCustomer(@Param('id' , ParseUUIDPipe) id:string, @Req req:AuthenticatedRequest){
+    deleteCustomer(@Param('id' , ParseUUIDPipe) id:string, @Req() req:AuthenticatedRequest){
         const userId = req.user.sub
         if(!userId){
             throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
