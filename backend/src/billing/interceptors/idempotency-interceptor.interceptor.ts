@@ -13,7 +13,12 @@ export class IdempotencyInterceptor implements NestInterceptor {
     const existing = await this.billingService.findKey( userId , idempotencyKey);
 
     if(existing){
-      return of(existing)
+      return of({
+            id: billing.id,
+            idempotencyKey: billing.idempotencyKey,
+            status: billing.status,
+            createdAt: billing.createdAt
+      })
     }
 
     return next.handle();

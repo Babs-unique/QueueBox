@@ -3,5 +3,6 @@ export type AuthenticatedRequest = Request & {
   user: {
     sub: string;
     email: string;
+    idempotencyKey?: string; 
   };
 };
