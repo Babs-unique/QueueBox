@@ -47,7 +47,7 @@ model BillingOperation {
   userId         String
   user           User                   @relation(fields: [userId], references: [id])
   idempotencyKey String
-  billingPeriod  DateTime
+  billingPeriod  String
   status         BillingOperationStatus
   totalJobs      Int
   processingJobs Int                    @default(0)
@@ -65,14 +65,14 @@ model InvoiceJob {
   id                 String           @id @default(uuid())
   billingOperationId String
   customerId         String
-  invoiceId          String
+  invoiceId          String?
   status             InvoiceJobStatus @default(QUEUED)
   lastError          String?
   processedAt        DateTime?
 
   billingOperation BillingOperation @relation(fields: [billingOperationId], references: [id])
   customer         Customer         @relation(fields: [customerId], references: [id])
-  invoice          Invoice          @relation(fields: [invoiceId], references: [id])
+  invoice          Invoice?          @relation(fields: [invoiceId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -81,6 +81,7 @@ export class AuthService {
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), 
       },
     });
+    
 
     return {
       user: { id: user.id, name: user.name, email: user.email },

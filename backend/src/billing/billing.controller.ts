@@ -1,14 +1,14 @@
-import { Controller, UseGuards, UseInterceptors, Post, Req, Response, Body, HttpException, HttpStatus, BadRequestException } from '@nestjs/common';
+import { Controller, UseGuards, UseInterceptors, Post, Req, Res, Body, HttpException, HttpStatus, BadRequestException } from '@nestjs/common';
 import type  { Response } from 'express'
 import { BillingService } from './billing.service';
 import { IdempotencyInterceptor } from './interceptors/idempotency-interceptor.interceptor';
-import { CreateBillingDto } from './dto/create-billing.dto';
+import { billingDtos } from './dto/billing.dto';
 import { AuthGuard } from '../auth/guards/auth.guard';
 import { BillingGuard } from './guards/billing-guard.guard';
-import { AuthenticatedRequest } from '../utils/auth-request';
+import type { AuthenticatedRequest } from '../utils/auth-request';
 
 
-@Controller('billing')
+@Controller('billings')
 export class BillingController {
     constructor( private readonly billingService: BillingService) {}
 
@@ -16,7 +16,7 @@ export class BillingController {
     @Post()
     @UseGuards(AuthGuard, BillingGuard)
     @UseInterceptors(IdempotencyInterceptor)
-    async create(@Body() createBillingDto: CreateBillingDto, @Req() req: AuthenticatedRequest, @Res({ passthrough: true }) res: Response) {
+    async create(@Body() billingDtos: billingDtos, @Req() req: AuthenticatedRequest, @Res({ passthrough: true }) res: Response) {
         const userId = req.user.sub;
         if(!userId){
             throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
@@ -25,7 +25,7 @@ export class BillingController {
         if (!idempotencyKey) {
             throw new BadRequestException('X-Idempotency-Key header is required.');
         }
-        return await this.billingService.create(createBillingDto, userId , idempotencyKey , res);
+        return await this.billingService.create(billingDtos, userId , idempotencyKey , res);
     }
 
 }
