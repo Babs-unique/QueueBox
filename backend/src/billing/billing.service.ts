@@ -2,11 +2,15 @@ import { HttpStatus, Injectable, NotFoundException, BadRequestException } from '
 import { BillingOperation } from '../../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service';
 import { billingDtos } from './dto/billing.dto';
+import { Queue } from 'bullmq';
+import { InjectQueue } from '@nestjs/bullmq';
 
 @Injectable()
 export class BillingService {
-  constructor(private readonly prisma: PrismaService) {}
-
+  constructor(
+    private readonly prisma: PrismaService,
+    @InjectQueue('InvoiceJob') private invoiceJob: Queue
+) {}
   async findKey(userId: string, idempotencyKey: string): Promise<BillingOperation | null> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
@@ -33,7 +37,7 @@ export class BillingService {
       throw new BadRequestException('Cannot initiate billing: No eligible customers found.');
     }
 
-    const billing = await this.prisma.$transaction(async (tx) => {
+    const { operation , dbJobs} = await this.prisma.$transaction(async (tx) => {
       const operation = await tx.billingOperation.create({
         data: {
           ...billingDtos,
@@ -55,17 +59,37 @@ export class BillingService {
         })),
       });
 
-      return operation;
+      const dbJobs = await tx.invoiceJob.findMany({
+        where: { billingOperationId: operation.id },
+      });
+
+      return { operation , dbJobs};
     });
 
-    res.set('X-Idempotency-Key', billing.idempotencyKey);
+    const bulkJobs = dbJobs.map((job) => ({
+      name: 'process-invoice',
+      data: {
+        invoiceJobId: job.id, 
+        customerId: job.customerId,
+        billingOperationId: job.billingOperationId,
+      },
+      opts: {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 5000, 
+        },
+      },
+    }));
+    await this.invoiceJob.addBulk(bulkJobs)
+    res.set('X-Idempotency-Key', operation.idempotencyKey);
     res.status(HttpStatus.ACCEPTED); 
 
     return {
-      id: billing.id,
-      idempotencyKey: billing.idempotencyKey,
-      status: billing.status,
-      createdAt: billing.createdAt,
+      id: operation.id,
+      idempotencyKey: operation.idempotencyKey,
+      status: operation.status,
+      createdAt: operation.createdAt,
     };
   }
 }
