@@ -3,6 +3,7 @@ import { BillingController } from './billing.controller';
 import { BillingService } from './billing.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { BullModule } from '@nestjs/bullmq';
+import { join } from 'node:path' 
 
 @Module({
     imports: [
