@@ -1,4 +1,4 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Logger, Injectable } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -12,7 +12,6 @@ interface InvoiceJobData {
 export class InvoiceJobProcessor extends WorkerHost {
   private readonly logger = new Logger(InvoiceJobProcessor.name);
   private readonly FIXED_MONTHLY_FEE = 25000; 
-  private readonly DUE_DATE = new Date(new Date().setDate(new Date().getDate() + 30)); // 30 days from now
 
   constructor(private readonly prisma: PrismaService) {
     super();
@@ -20,6 +19,9 @@ export class InvoiceJobProcessor extends WorkerHost {
 
   async process(job: Job<InvoiceJobData>): Promise<void> {
     const invoiceData = job.data;
+    this.logger.log(`Processing Job ID: ${job.id} (Attempt ${job.attemptsMade})`)
+
+    const dueDate = new Date(new Date().setDate(new Date().getDate() + 30)); // 30 days from now
 
     if (!invoiceData || !invoiceData.invoiceJobId) {
       throw new Error('Invalid job data: Missing invoiceJobId');
@@ -75,7 +77,7 @@ export class InvoiceJobProcessor extends WorkerHost {
               billingPeriod: billingPeriod,
               amount: this.FIXED_MONTHLY_FEE,
               status: 'GENERATED',
-              dueDate: this.DUE_DATE,
+              dueDate: dueDate,
             },
           });
         }
@@ -120,11 +122,13 @@ export class InvoiceJobProcessor extends WorkerHost {
 
       this.logger.log(`Successfully generated invoice for Job ${invoiceJobId}`);
     } catch (error) {
+      console.error('!!! ABSOLUTE CORE ERROR CAUGHT !!!');
+      console.error(error); 
       this.logger.error(`Error processing invoice job ${invoiceJobId}:`, error);
       
       // 6. Manage failures and check retry context limits
       const isPermanentFailure = job.attemptsMade >= (job.opts.attempts || 1);
-
+    try{
       if (isPermanentFailure) {
         await this.handlePermanentFailure(invoiceJobId, billingOperationId, error.message);
       } else {
@@ -135,6 +139,9 @@ export class InvoiceJobProcessor extends WorkerHost {
           data: { lastError: error.message },
         });
       }
+    }catch(dbError) {
+        this.logger.error(`Failed to record error state to DB for Job ${invoiceJobId}: ${dbError.message}`);
+    }
 
       // Bubble exception upward so BullMQ marks the attempt as failed and schedules the backoff retry
       throw error;
@@ -181,4 +188,20 @@ export class InvoiceJobProcessor extends WorkerHost {
       }
     });
   }
+  @OnWorkerEvent('active')
+  onActive(job: Job) {
+    console.log(
+      `Processing job ${job.id} of type ${job.name} with data ${job.data}...`,
+    );
+  }
+  @OnWorkerEvent('progress')
+  onProgress(job: Job, progress: number) {
+    console.log(`Job ${job.id} is ${progress}% complete.`);
+  }
+  @OnWorkerEvent('failed')
+  onFailed(job: Job, error: Error) {
+    console.error(`Job ${job.id} failed with error: ${error.message}`);
+  }
+  
+
 }

@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config'
+import { BullModule } from '@nestjs/bullmq';
 import { BillingService } from './billing.service';
 import { PrismaModule } from '../prisma/prisma.module';
-import { BullModule } from '@nestjs/bullmq';
 import { InvoiceJobProcessor } from './processors/invoice.processor';
 // import { join } from 'node:path';
 // import { pathToFileURL } from 'node:url'
@@ -18,6 +19,10 @@ import { InvoiceJobProcessor } from './processors/invoice.processor';
     BullModule.registerQueue({
       name: 'InvoiceJob',
     }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: '.env' 
+    })
   ],
   providers: [BillingService, InvoiceJobProcessor],
 })

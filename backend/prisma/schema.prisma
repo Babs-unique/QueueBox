@@ -1,13 +1,8 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
-  moduleFormat = "cjs"
-    importFileExtension = ""
+  provider            = "prisma-client"
+  output              = "../generated/prisma"
+  importFileExtension = ""
+  moduleFormat        = "cjs"
 }
 
 datasource db {
@@ -15,29 +10,27 @@ datasource db {
 }
 
 model User {
-  id           String    @id @default(uuid())
-  email        String    @unique
-  name         String
-  password     String
-  refreshToken String?
-  expiresAt    DateTime?
-  isRevoked    Boolean   @default(false)
-  deletedAt    DateTime?
-  createdAt    DateTime  @default(now())
-
-  customers         Customer[]
+  id                String             @id @default(uuid())
+  email             String             @unique
+  name              String
+  password          String
+  refreshToken      String?
+  expiresAt         DateTime?
+  isRevoked         Boolean            @default(false)
+  deletedAt         DateTime?
+  createdAt         DateTime           @default(now())
   billingOperations BillingOperation[]
+  customers         Customer[]
 }
 
 model Customer {
-  id        String   @id @default(uuid())
-  name      String
-  email     String
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
+  id          String       @id @default(uuid())
+  name        String
+  email       String
+  userId      String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  user        User         @relation(fields: [userId], references: [id])
   invoices    Invoice[]
   invoiceJobs InvoiceJob[]
 
@@ -47,7 +40,6 @@ model Customer {
 model BillingOperation {
   id             String                 @id @default(uuid())
   userId         String
-  user           User                   @relation(fields: [userId], references: [id])
   idempotencyKey String
   billingPeriod  String
   status         BillingOperationStatus
@@ -57,8 +49,8 @@ model BillingOperation {
   failedJobs     Int                    @default(0)
   createdAt      DateTime               @default(now())
   updatedAt      DateTime               @updatedAt
-
-  invoiceJobs InvoiceJob[]
+  user           User                   @relation(fields: [userId], references: [id])
+  invoiceJobs    InvoiceJob[]
 
   @@unique([userId, idempotencyKey])
 }
@@ -71,25 +63,23 @@ model InvoiceJob {
   status             InvoiceJobStatus @default(QUEUED)
   lastError          String?
   processedAt        DateTime?
-
-  billingOperation BillingOperation @relation(fields: [billingOperationId], references: [id])
-  customer         Customer         @relation(fields: [customerId], references: [id])
-  invoice          Invoice?          @relation(fields: [invoiceId], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  billingOperation   BillingOperation @relation(fields: [billingOperationId], references: [id])
+  customer           Customer         @relation(fields: [customerId], references: [id])
+  invoice            Invoice?         @relation(fields: [invoiceId], references: [id])
 }
 
 model Invoice {
   id            String        @id @default(uuid())
   customerId    String
-  customer      Customer      @relation(fields: [customerId], references: [id])
   amount        Decimal       @db.Decimal(10, 2)
-  billingPeriod DateTime
+  billingPeriod String
   dueDate       DateTime
   status        InvoiceStatus @default(GENERATED)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+  customer      Customer      @relation(fields: [customerId], references: [id])
   invoiceJobs   InvoiceJob[]
 
   @@unique([customerId, billingPeriod])
