@@ -31,6 +31,14 @@ import { CustomerModule } from './customer/customer.module';
       connection: {
         host: 'localhost',
         port: 6379,
+        maxRetryRequest: 3,
+        retryStrategy(times) {
+          const delay = Math.min(times * 50, 2000);
+          return delay;
+        },
+        connectionTimeout: 1000,
+        disconnectTimeout: 2000,
+        enableOfflineQueue: false
       },
     }),
     PrismaModule, 

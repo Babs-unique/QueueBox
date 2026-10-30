@@ -85,6 +85,27 @@ model Invoice {
   @@unique([customerId, billingPeriod])
 }
 
+
+
+model OutboxEvent {
+  id        String       @id @default(uuid())
+  topic     String   
+  payload   Json         
+  status    OutboxStatus @default(PENDING)
+  attempts  Int          @default(0)
+  lastError String?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@index([status, createdAt])
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+}
 enum InvoiceJobStatus {
   QUEUED
   PROCESSING

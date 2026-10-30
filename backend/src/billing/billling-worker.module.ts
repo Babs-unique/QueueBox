@@ -4,6 +4,8 @@ import { BullModule } from '@nestjs/bullmq';
 import { BillingService } from './billing.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { InvoiceJobProcessor } from './processors/invoice.processor';
+import { OutboxRecoveryService } from './outbox-recovery/outbox-recovery.service';
+import { QueueRecovery } from './processors/queue-recovery'
 // import { join } from 'node:path';
 // import { pathToFileURL } from 'node:url'
 
@@ -24,6 +26,6 @@ import { InvoiceJobProcessor } from './processors/invoice.processor';
       envFilePath: '.env' 
     })
   ],
-  providers: [BillingService, InvoiceJobProcessor],
+  providers: [BillingService, InvoiceJobProcessor, OutboxRecoveryService, QueueRecovery],
 })
 export class BillingWorkerModule {}

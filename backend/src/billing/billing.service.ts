@@ -1,4 +1,4 @@
-import { HttpStatus, Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { HttpStatus, Injectable, NotFoundException, BadRequestException, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { BillingOperation } from '../../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service';
 import { billingDtos } from './dto/billing.dto';
@@ -38,7 +38,7 @@ export class BillingService {
       throw new BadRequestException('Cannot initiate billing: No eligible customers found.');
     }
 
-    const { operation , dbJobs} = await this.prisma.$transaction(async (tx) => {
+    const { operation , dbJobs , outboxEvent} = await this.prisma.$transaction(async (tx) => {
       const operation = await tx.billingOperation.create({
         data: {
           ...billingDtos,
@@ -60,12 +60,29 @@ export class BillingService {
         })),
       });
 
+    const outboxEvent= await tx.outboxEvent.create({
+        data:{
+        topic: 'process-invoice',
+        payload: {
+          billingOperationId: operation.id,
+          
+        },
+        status: 'PENDING',
+        attempts: 0,
+        lastError: null
+      }
+      });
+
       const dbJobs = await tx.invoiceJob.findMany({
         where: { billingOperationId: operation.id },
       });
 
-      return { operation , dbJobs};
+      return { operation , dbJobs, outboxEvent};
     });
+
+    let queueDispatched = true;
+    let warningMsg: string | null = null;
+
     try{
         const bulkJobs = dbJobs.map((job) => ({
             name: 'process-invoice',
@@ -85,19 +102,49 @@ export class BillingService {
             
         }));
         await this.invoiceJob.addBulk(bulkJobs)
+
+        //Updating and changing the status of the outBoxEvent
+        await this.prisma.outboxEvent.update({
+        where: { id: outboxEvent.id },
+        data: { 
+          status: 'PROCESSED',
+          attempts: 1 
+        },
+      });
+
         this.logger.log(`[Queue Success] ${bulkJobs.length} jobs successfully added to 'InvoiceJob' queue.`); 
-        res.set('X-Idempotency-Key', operation.idempotencyKey);
-        res.status(HttpStatus.ACCEPTED); 
+
+    }catch(e){
+        queueDispatched = false;
+        this.logger.warn(
+          'Redis/BullMQ unreachable. Jobs stored durably in DB but not pushed to queue yet.',
+          e?.stack || e,
+        );
+        warningMsg = 'Billing operation recorded, but queue dispatch is delayed due to worker connectivity.';
+        try {
+        await this.prisma.outboxEvent.update({
+          where: { id: outboxEvent.id },
+          data: {
+            status: 'PENDING', 
+            attempts: { increment: 1 },
+            lastError: e?.message || String(e),
+          },
+        });
+      } catch (dbUpdateError) {
+        this.logger.error('Failed to update outbox event error status', dbUpdateError);
+      }
+    }
+      res.set('X-Idempotency-Key', operation.idempotencyKey);
+      res.status(HttpStatus.ACCEPTED); 
 
     return {
       id: operation.id,
       idempotencyKey: operation.idempotencyKey,
       status: operation.status,
       createdAt: operation.createdAt,
+      durable: true,
+      queueDispatch: queueDispatched,
+      warning: warningMsg
     };
-    }catch(e){
-        this.logger.error('Failed to add job to the BullMQ queue', e.stack);
-        throw new BadRequestException('Failed to dispatch job to queue system.');
-    }
   }
 }
