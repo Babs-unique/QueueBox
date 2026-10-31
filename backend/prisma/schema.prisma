@@ -68,6 +68,7 @@ model InvoiceJob {
   billingOperation   BillingOperation @relation(fields: [billingOperationId], references: [id])
   customer           Customer         @relation(fields: [customerId], references: [id])
   invoice            Invoice?         @relation(fields: [invoiceId], references: [id])
+  invoiceJobDlq      InvoiceJobDlq?
 }
 
 model Invoice {
@@ -85,12 +86,10 @@ model Invoice {
   @@unique([customerId, billingPeriod])
 }
 
-
-
 model OutboxEvent {
   id        String       @id @default(uuid())
-  topic     String   
-  payload   Json         
+  topic     String
+  payload   Json
   status    OutboxStatus @default(PENDING)
   attempts  Int          @default(0)
   lastError String?
@@ -100,12 +99,34 @@ model OutboxEvent {
   @@index([status, createdAt])
 }
 
+model InvoiceJobDlq {
+  id                 String    @id @default(uuid())
+  invoiceJobId       String    @unique
+  originalQueueJobId String
+  failureReason      String
+  attemptsMade       Int       @default(0)
+  failedAt           DateTime  @default(now())
+  status             DqStatus  @default(PENDING_REPLAY)
+  replayCount        Int       @default(0)
+  lastReplayAt       DateTime?
+
+  invoiceJob InvoiceJob @relation(fields: [invoiceJobId], references: [id], onDelete: Cascade)
+}
+
+enum DqStatus {
+  PENDING_REPLAY
+  REPLAYING
+  RESOLVED
+  FAILED_PERMANENTLY
+}
+
 enum OutboxStatus {
   PENDING
   PROCESSING
   PROCESSED
   FAILED
 }
+
 enum InvoiceJobStatus {
   QUEUED
   PROCESSING

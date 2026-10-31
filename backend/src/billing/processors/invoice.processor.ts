@@ -11,7 +11,7 @@ interface InvoiceJobData {
 @Processor('InvoiceJob', { concurrency: 3 })
 export class InvoiceJobProcessor extends WorkerHost {
   private readonly logger = new Logger(InvoiceJobProcessor.name);
-  private readonly FIXED_MONTHLY_FEE = 25000; 
+  private readonly FIXED_MONTHLY_FEE = 25000;
 
   constructor(private readonly prisma: PrismaService) {
     super();
@@ -19,16 +19,16 @@ export class InvoiceJobProcessor extends WorkerHost {
 
   async process(job: Job<InvoiceJobData>): Promise<void> {
     const invoiceData = job.data;
-    this.logger.log(`Processing Job ID: ${job.id} (Attempt ${job.attemptsMade})`)
+    this.logger.log(`Processing Job ID: ${job.id} (Attempt ${job.attemptsMade})`);
 
-    const dueDate = new Date(new Date().setDate(new Date().getDate() + 30)); // 30 days from now
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 30); // 30 days from now
 
     if (!invoiceData || !invoiceData.invoiceJobId) {
       throw new Error('Invalid job data: Missing invoiceJobId');
     }
 
     const invoiceJobId = invoiceData.invoiceJobId;
-
     const invoiceJob = await this.prisma.invoiceJob.findUnique({
       where: { id: invoiceJobId },
       include: { billingOperation: true },
@@ -45,7 +45,8 @@ export class InvoiceJobProcessor extends WorkerHost {
       this.logger.log(`Job ${invoiceJobId} is already COMPLETED. Skipping.`);
       return;
     }
-    
+
+    // Set processing status safely
     if (job.attemptsMade <= 1 && currentStatus !== 'PROCESSING') {
       await this.prisma.$transaction([
         this.prisma.invoiceJob.update({
@@ -54,10 +55,7 @@ export class InvoiceJobProcessor extends WorkerHost {
         }),
         this.prisma.billingOperation.update({
           where: { id: billingOperationId },
-          data: { 
-            processingJobs: { increment: 1 },
-            status: 'PROCESSING'
-          },
+          data: { processingJobs: { increment: 1 }, status: 'PROCESSING' },
         }),
       ]);
     }
@@ -70,6 +68,7 @@ export class InvoiceJobProcessor extends WorkerHost {
             billingPeriod: billingPeriod,
           },
         });
+
         if (!invoice) {
           invoice = await tx.invoice.create({
             data: {
@@ -81,6 +80,7 @@ export class InvoiceJobProcessor extends WorkerHost {
             },
           });
         }
+
         // 3. Update the invoice job status to COMPLETED and link the generated invoice
         await tx.invoiceJob.update({
           where: { id: invoiceJobId },
@@ -91,7 +91,7 @@ export class InvoiceJobProcessor extends WorkerHost {
           },
         });
 
-        // 4. Update parent structural counters atomically 
+        // 4. Update parent structural counters atomically
         const updatedOperation = await tx.billingOperation.update({
           where: { id: billingOperationId },
           data: {
@@ -106,13 +106,11 @@ export class InvoiceJobProcessor extends WorkerHost {
 
         if (totalAccounted === updatedOperation.totalJobs && activeJobsCount === 0) {
           let terminalStatus: 'COMPLETED' | 'FAILED' | 'PARTIALLY_COMPLETED' = 'COMPLETED';
-          
           if (updatedOperation.failedJobs === updatedOperation.totalJobs) {
             terminalStatus = 'FAILED';
           } else if (updatedOperation.failedJobs > 0) {
             terminalStatus = 'PARTIALLY_COMPLETED';
           }
-
           await tx.billingOperation.update({
             where: { id: billingOperationId },
             data: { status: terminalStatus },
@@ -121,39 +119,39 @@ export class InvoiceJobProcessor extends WorkerHost {
       });
 
       this.logger.log(`Successfully generated invoice for Job ${invoiceJobId}`);
-    } catch (error) {
-      console.error('!!! ABSOLUTE CORE ERROR CAUGHT !!!');
-      console.error(error); 
+    } catch (error: any) {
       this.logger.error(`Error processing invoice job ${invoiceJobId}:`, error);
-      
-      // 6. Manage failures and check retry context limits
-      const isPermanentFailure = job.attemptsMade >= (job.opts.attempts || 1);
-    try{
-      if (isPermanentFailure) {
-        await this.handlePermanentFailure(invoiceJobId, billingOperationId, error.message);
-      } else {
-        // If it's a temporary failure and BullMQ will retry it, we don't decrement processingJobs yet,
-        // because it is still active within the system lifecycle.
-        await this.prisma.invoiceJob.update({
-          where: { id: invoiceJobId },
-          data: { lastError: error.message },
-        });
-      }
-    }catch(dbError) {
-        this.logger.error(`Failed to record error state to DB for Job ${invoiceJobId}: ${dbError.message}`);
-    }
 
-      // Bubble exception upward so BullMQ marks the attempt as failed and schedules the backoff retry
+      // 6. Manage failures and check retry context limits
+      const maxAttempts = job.opts.attempts || 1;
+      const isPermanentFailure = job.attemptsMade >= maxAttempts;
+
+      try {
+        if (isPermanentFailure) {
+          await this.handlePermanentFailure(job, invoiceJobId, billingOperationId, error.message);
+        } else {
+          await this.prisma.invoiceJob.update({
+            where: { id: invoiceJobId },
+            data: { lastError: error.message },
+          });
+        }
+      } catch (dbError: any) {
+        this.logger.error(`Failed to record error state to DB for Job ${invoiceJobId}: ${dbError.message}`);
+      }
+
+      // Bubble exception upward so BullMQ marks the attempt as failed and schedules backoff
       throw error;
     }
   }
 
   private async handlePermanentFailure(
-    invoiceJobId: string, 
-    billingOperationId: string, 
+    job: Job<InvoiceJobData>,
+    invoiceJobId: string,
+    billingOperationId: string,
     errorMessage: string
   ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
+      // Update job to FAILED status
       await tx.invoiceJob.update({
         where: { id: invoiceJobId },
         data: {
@@ -162,6 +160,7 @@ export class InvoiceJobProcessor extends WorkerHost {
         },
       });
 
+      // Update parent counters
       const updatedOperation = await tx.billingOperation.update({
         where: { id: billingOperationId },
         data: {
@@ -170,17 +169,35 @@ export class InvoiceJobProcessor extends WorkerHost {
         },
       });
 
-      // Check terminal parent status criteria
+      // 1. Create the DLQ record safely outside of the terminal-parent block
+      await tx.invoiceJobDlq.upsert({
+        where: { invoiceJobId: invoiceJobId },
+        update: {
+          originalQueueJobId: String(job.id),
+          failureReason: errorMessage,
+          status: 'FAILED_PERMANENTLY',
+          attemptsMade: job.attemptsMade,
+          failedAt: new Date(),
+        },
+        create: {
+          invoiceJobId: invoiceJobId,
+          originalQueueJobId: String(job.id),
+          failureReason: errorMessage,
+          status: 'FAILED_PERMANENTLY',
+          attemptsMade: job.attemptsMade,
+          failedAt: new Date(),
+        },
+      });
+
+      // 2. Evaluate if this specific failure ends the broader billing run
       const activeJobsCount = updatedOperation.processingJobs;
       const totalAccounted = updatedOperation.completedJobs + updatedOperation.failedJobs;
 
       if (totalAccounted === updatedOperation.totalJobs && activeJobsCount === 0) {
         let terminalStatus: 'COMPLETED' | 'FAILED' | 'PARTIALLY_COMPLETED' = 'FAILED';
-        
         if (updatedOperation.completedJobs > 0) {
           terminalStatus = 'PARTIALLY_COMPLETED';
         }
-
         await tx.billingOperation.update({
           where: { id: billingOperationId },
           data: { status: terminalStatus },
@@ -188,20 +205,19 @@ export class InvoiceJobProcessor extends WorkerHost {
       }
     });
   }
+
   @OnWorkerEvent('active')
   onActive(job: Job) {
-    console.log(
-      `Processing job ${job.id} of type ${job.name} with data ${job.data}...`,
-    );
+    this.logger.debug(`Processing job ${job.id} of type ${job.name}...`);
   }
+
   @OnWorkerEvent('progress')
   onProgress(job: Job, progress: number) {
-    console.log(`Job ${job.id} is ${progress}% complete.`);
+    this.logger.debug(`Job ${job.id} is ${progress}% complete.`);
   }
+
   @OnWorkerEvent('failed')
   onFailed(job: Job, error: Error) {
-    console.error(`Job ${job.id} failed with error: ${error.message}`);
+    this.logger.error(`Job ${job.id} failed with error: ${error.message}`);
   }
-  
-
 }

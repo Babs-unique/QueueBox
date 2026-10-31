@@ -4,6 +4,7 @@ import { BillingService } from './billing.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { BullModule } from '@nestjs/bullmq';
 import { join } from 'node:path' 
+import { InvoiceDlqReplayService } from './invoice-dlq-replay/invoice-dlq-replay.service';
 
 @Module({
     imports: [
@@ -13,6 +14,6 @@ import { join } from 'node:path'
         }),
     ],
     controllers: [BillingController],
-    providers: [BillingService],
+    providers: [BillingService, InvoiceDlqReplayService],
 })
 export class BillingModule {}

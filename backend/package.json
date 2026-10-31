@@ -22,7 +22,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "prisma:migrate": "npx prisma migrate dev",
     "prisma:generate": "npx prisma generate",
-    "prisma:studio": "npx prisma studio"
+    "prisma:studio": "npx prisma studio",
+    "prisma:format": "npx prisma format"
   },
   "dependencies": {
     "@nestjs/bullmq": "^12.0.0",
