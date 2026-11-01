@@ -10,143 +10,123 @@ interface OutboxPayload {
 @Injectable()
 export class OutboxRecoveryService {
   private readonly logger = new Logger(OutboxRecoveryService.name);
+  private recoveryInFlight = false;
 
   constructor(
     private readonly prisma: PrismaService,
     @InjectQueue('InvoiceJob') private invoiceJobQueue: Queue,
   ) {}
 
-  async recoverPendingOutbox(): Promise<void> {
-    try {
-      await this.prisma.$transaction(async (tx) => {
-        const pendingOutboxEvents: any[] = await tx.$queryRaw`
-          SELECT * FROM "OutboxEvent" 
-          WHERE "status" = 'PENDING' 
-          FOR UPDATE SKIP LOCKED
-        `;
-
-        if (pendingOutboxEvents.length === 0) {
-          this.logger.log('No pending outbox events found for recovery.');
-          return;
-        }
-
-        const billingOperationIds = pendingOutboxEvents
-          .map((event) => (event.payload as unknown as OutboxPayload)?.billingOperationId)
-          .filter(Boolean);
-
-        if (billingOperationIds.length === 0) return;
-
-        const pendingDbJobs = await tx.invoiceJob.findMany({
-          where: {
-            billingOperationId: { in: billingOperationIds },
-            status: 'QUEUED',
-          },
-        });
-
-        const outboxIds = pendingOutboxEvents.map((e) => e.id);
-
-        if (pendingDbJobs.length === 0) {
-          this.logger.log('Outbox entries exist, but matching pending DB jobs were already processed.');
-          
-          await tx.outboxEvent.updateMany({
-            where: { id: { in: outboxIds } },
-            data: { status: 'PROCESSED' },
-          });
-          return;
-        }
-
-        const bulkJobs = pendingDbJobs.map((job) => ({
-          name: 'process-invoice',
-          data: {
-            invoiceJobId: job.id,
-            customerId: job.customerId,
-            billingOperationId: job.billingOperationId,
-          },
-          opts: {
-            attempts: 3,
-            backoff: { type: 'exponential', delay: 5000 },
-            removeOnComplete: true,
-          },
-        }));
-
-        await this.invoiceJobQueue.addBulk(bulkJobs);
-
-        await tx.outboxEvent.updateMany({
-          where: { id: { in: outboxIds } },
-          data: { status: 'PROCESSED' },
-        });
-
-        this.logger.log(`Successfully recovered ${bulkJobs.length} individual jobs across pending outbox events.`);
-      });
-    } catch (e) {
-      this.logger.error('Error recovering pending outbox events:', e?.stack || e);
+  private async recoverOutboxByStatus(outboxStatus: 'PENDING' | 'FAILED'): Promise<void> {
+    if (this.recoveryInFlight) {
+      this.logger.debug(`Recovery already in flight for ${outboxStatus} outbox events; skipping duplicate run.`);
+      return;
     }
-  }
 
-  async recoverFailedOutbox(): Promise<void> {
+    this.recoveryInFlight = true;
+
     try {
-      await this.prisma.$transaction(async (tx) => {
-        const failedOutboxEvents: any[] = await tx.$queryRaw`
-          SELECT * FROM "OutboxEvent" 
-          WHERE "status" = 'FAILED' 
+      const recoveryData: { events: any[]; jobs: any[] } | null = await this.prisma.$transaction(async (tx) => {
+        const events: any[] = await tx.$queryRaw`
+          SELECT * FROM "OutboxEvent"
+          WHERE "status" = ${outboxStatus}
           FOR UPDATE SKIP LOCKED
         `;
 
-        if (failedOutboxEvents.length === 0) {
-          this.logger.log('No failed outbox events found for recovery.');
-          return;
+        if (events.length === 0) {
+          this.logger.log(`No ${outboxStatus.toLowerCase()} outbox events found for recovery.`);
+          return null;
         }
 
-        const billingOperationIds = failedOutboxEvents
+        const billingOperationIds = events
           .map((event) => (event.payload as unknown as OutboxPayload)?.billingOperationId)
           .filter(Boolean);
 
-        if (billingOperationIds.length === 0) return;
+        if (billingOperationIds.length === 0) {
+          return null;
+        }
 
-        const failedDbJobs = await tx.invoiceJob.findMany({
+        const matchingJobs = await tx.invoiceJob.findMany({
           where: {
             billingOperationId: { in: billingOperationIds },
             status: { in: ['QUEUED', 'FAILED'] },
           },
         });
 
-        const outboxIds = failedOutboxEvents.map((e) => e.id);
+        const outboxIds = events.map((event) => event.id);
 
-        if (failedDbJobs.length === 0) {
-          this.logger.log('Failed outbox entries exist, but matching DB jobs were already processed.');
-          
+        if (matchingJobs.length === 0) {
+          this.logger.log(
+            `Outbox entries exist for ${outboxStatus.toLowerCase()} state, but matching DB jobs were already processed.`,
+          );
           await tx.outboxEvent.updateMany({
             where: { id: { in: outboxIds } },
             data: { status: 'PROCESSED' },
           });
-          return;
+          return null;
         }
-
-        const bulkJobs = failedDbJobs.map((job) => ({
-          name: 'process-invoice',
-          data: {
-            invoiceJobId: job.id,
-            customerId: job.customerId,
-            billingOperationId: job.billingOperationId,
-          },
-          opts: {
-            attempts: 3,
-            backoff: { type: 'exponential', delay: 5000 },
-            removeOnComplete: true,
-          },
-        }));
-
-        await this.invoiceJobQueue.addBulk(bulkJobs);
 
         await tx.outboxEvent.updateMany({
           where: { id: { in: outboxIds } },
-          data: { status: 'PROCESSED' },
+          data: { status: 'PROCESSING' },
         });
 
-        this.logger.log(`Successfully recovered ${bulkJobs.length} individual jobs across failed outbox events.`);
+        return { events, jobs: matchingJobs };
       });
-    } catch (e) {
-      this.logger.error('Error recovering failed outbox events:', e?.stack || e);
+
+      if (!recoveryData) {
+        return;
+      }
+
+      const jobs = recoveryData.jobs;
+      const outboxIds = recoveryData.events.map((event) => event.id);
+
+      const bulkJobs = jobs.map((job) => ({
+        name: 'process-invoice',
+        data: {
+          invoiceJobId: job.id,
+          customerId: job.customerId,
+          billingOperationId: job.billingOperationId,
+        },
+        opts: {
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 5000 },
+          removeOnComplete: true,
+        },
+      }));
+
+      try {
+        await this.invoiceJobQueue.addBulk(bulkJobs);
+        await this.prisma.outboxEvent.updateMany({
+          where: { id: { in: outboxIds } },
+          data: { status: 'PROCESSED', attempts: { increment: 1 } },
+        });
+        this.logger.log(
+          `Successfully recovered ${bulkJobs.length} individual jobs across ${outboxStatus.toLowerCase()} outbox events.`,
+        );
+      } catch (error) {
+        await this.prisma.outboxEvent.updateMany({
+          where: { id: { in: outboxIds } },
+          data: {
+            status: 'FAILED',
+            attempts: { increment: 1 },
+            lastError: error instanceof Error ? error.message : String(error),
+          },
+        });
+        throw error;
+      }
+    } catch (error) {
+      this.logger.error(`Error recovering ${outboxStatus.toLowerCase()} outbox events:`, error instanceof Error ? error.stack : error);
+    } finally {
+      this.recoveryInFlight = false;
     }
+  }
+
+  async recoverPendingOutbox(): Promise<void> {
+    await this.recoverOutboxByStatus('PENDING');
+  }
+
+  async recoverFailedOutbox(): Promise<void> {
+    await this.recoverOutboxByStatus('FAILED');
   }
 }
