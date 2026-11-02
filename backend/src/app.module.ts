@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { ConfigModule } from '@nestjs/config';
+import { AppConfigurationModule } from './config/app-configuration.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module'; 
 import { ThrottlerModule } from '@nestjs/throttler';
@@ -12,13 +12,12 @@ import { BillingModule } from './billing/billing.module';
 import { CustomerController } from './customer/customer.controller';
 import { CustomerService } from './customer/customer.service';
 import { CustomerModule } from './customer/customer.module';
+import { ConfigService } from '@nestjs/config'
+
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ 
-      isGlobal: true,
-      envFilePath: '.env',
-     }), 
+    AppConfigurationModule,
     ThrottlerModule.forRoot({
       throttlers: [
         {
@@ -29,8 +28,8 @@ import { CustomerModule } from './customer/customer.module';
     }),
     BullModule.forRoot({
       connection: {
-        host: 'localhost',
-        port: 6379,
+        host: process.env.REDIS_HOST,
+        port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : 6379,
         maxRetryRequest: 3,
         retryStrategy(times) {
           const delay = Math.min(times * 50, 2000);

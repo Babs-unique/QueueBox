@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { BillingWorkerModule } from './billing/billling-worker.module';
 

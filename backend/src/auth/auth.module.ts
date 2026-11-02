@@ -14,12 +14,17 @@ import { PrismaModule } from '../prisma/prisma.module.js';
       global: true,
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        secret: config.getOrThrow<string>('JWT_ACCESS_SECRET'),
-        signOptions: {
-          expiresIn: (config.get<string>('JWT_ACCESS_EXPIRATION') || '1d') as StringValue,
-        },
-      }),
+      useFactory: (config: ConfigService) => {
+        const accessSecret = config.getOrThrow<string>('JWT_ACCESS_SECRET');
+        config.getOrThrow<string>('JWT_REFRESH_SECRET');
+
+        return {
+          secret: accessSecret,
+          signOptions: {
+            expiresIn: (config.get<string>('JWT_ACCESS_EXPIRATION') || '1d') as StringValue,
+          },
+        };
+      },
     }),
   ],
   providers: [AuthService],
