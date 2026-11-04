@@ -26,7 +26,7 @@
     "prisma:studio": "npx prisma studio",
     "prisma:format": "npx prisma format",
     "prisma:migrate:deploy": "npx prisma migrate deploy",
-    "prisma:migrate:reset": "npx prisma migrate reset",
+    "prisma:migrate:reset": "npx prisma migrate reset"
   },
   "dependencies": {
     "@nestjs/bullmq": "^12.0.0",
