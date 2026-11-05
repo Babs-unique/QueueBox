@@ -8,17 +8,20 @@ import { InvoiceJobProcessor } from './processors/invoice.processor';
 import { OutboxRecoveryService } from './outbox-recovery/outbox-recovery.service';
 import { QueueRecovery } from './processors/queue-recovery';
 import { TasksService } from './processors/queue-cron-recovery';
+import { ConfigService } from '@nestjs/config';
+import { createRedisConnection } from '../config/redis-connection';
 
 @Module({
   imports: [
     AppConfigurationModule,
     PrismaModule,
     ScheduleModule.forRoot(),
-    BullModule.forRoot({
-      connection: {
-        host: 'localhost',
-        port: 6379,
-      },
+    BullModule.forRootAsync({
+      imports: [AppConfigurationModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        connection: createRedisConnection(config),
+      }),
     }),
     BullModule.registerQueue({
       name: 'InvoiceJob',

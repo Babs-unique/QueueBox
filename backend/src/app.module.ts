@@ -12,7 +12,8 @@ import { BillingModule } from './billing/billing.module';
 import { CustomerController } from './customer/customer.controller';
 import { CustomerService } from './customer/customer.service';
 import { CustomerModule } from './customer/customer.module';
-import { ConfigService } from '@nestjs/config'
+import { ConfigService } from '@nestjs/config';
+import { createRedisConnection } from './config/redis-connection';
 
 
 @Module({
@@ -26,19 +27,12 @@ import { ConfigService } from '@nestjs/config'
         },
       ],
     }),
-    BullModule.forRoot({
-      connection: {
-        host: process.env.REDIS_HOST,
-        port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : 6379,
-        maxRetryRequest: 3,
-        retryStrategy(times) {
-          const delay = Math.min(times * 50, 2000);
-          return delay;
-        },
-        connectionTimeout: 1000,
-        disconnectTimeout: 2000,
-        enableOfflineQueue: false
-      },
+    BullModule.forRootAsync({
+      imports: [AppConfigurationModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        connection: createRedisConnection(config),
+      }),
     }),
     PrismaModule, 
     AuthModule, BillingModule, CustomerModule, 
