@@ -1,6 +1,7 @@
-import { Controller, UseGuards, UseInterceptors, Post, Req, Res, Body, HttpException, HttpStatus, BadRequestException } from '@nestjs/common';
+import { Controller, UseGuards, UseInterceptors, Post, Req, Res, Body, HttpException, HttpStatus, BadRequestException, Get, Param, ParseUUIDPipe } from '@nestjs/common';
 import type  { Response } from 'express'
 import { BillingService } from './billing.service';
+import { InvoiceDlqReplayService } from './invoice-dlq-replay/invoice-dlq-replay.service';
 import { IdempotencyInterceptor } from './interceptors/idempotency-interceptor.interceptor';
 import { billingDtos } from './dto/billing.dto';
 import { AuthGuard } from '../auth/guards/auth.guard';
@@ -10,8 +11,46 @@ import type { AuthenticatedRequest } from '../utils/auth-request';
 
 @Controller('billings')
 export class BillingController {
-    constructor( private readonly billingService: BillingService) {}
+    constructor(
+        private readonly billingService: BillingService,
+        private readonly invoiceDlqReplayService: InvoiceDlqReplayService,
+    ) {}
 
+    @Get()
+    @UseGuards(AuthGuard)
+    findOperations(@Req() req: AuthenticatedRequest) {
+        return this.billingService.findOperations(req.user.sub);
+    }
+
+    @Get('invoices')
+    @UseGuards(AuthGuard)
+    findInvoices(@Req() req: AuthenticatedRequest) {
+        return this.billingService.findInvoices(req.user.sub);
+    }
+
+    @Get('jobs')
+    @UseGuards(AuthGuard)
+    findInvoiceJobs(@Req() req: AuthenticatedRequest) {
+        return this.billingService.findInvoiceJobs(req.user.sub);
+    }
+
+    @Post('dlq/:id/replay')
+    @UseGuards(AuthGuard)
+    replayInvoiceJob(
+        @Param('id', ParseUUIDPipe) id: string,
+        @Req() req: AuthenticatedRequest,
+    ) {
+        return this.invoiceDlqReplayService.replayJob(id, req.user.sub);
+    }
+
+    @Get(':id')
+    @UseGuards(AuthGuard)
+    findOperation(
+        @Param('id', ParseUUIDPipe) id: string,
+        @Req() req: AuthenticatedRequest,
+    ) {
+        return this.billingService.findOperation(req.user.sub, id);
+    }
 
     @Post()
     @UseGuards(AuthGuard, BillingGuard)

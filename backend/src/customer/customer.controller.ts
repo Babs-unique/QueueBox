@@ -36,7 +36,7 @@ export class CustomerController {
         if(!userId){
             throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
         }
-        return this.customerService.getCustomerById(id, userId);
+        return this.customerService.getCustomerById(userId, id);
     }
     @UseGuards(AuthGuard)
     @Patch(':id')
@@ -54,6 +54,6 @@ export class CustomerController {
         if(!userId){
             throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
         }
-        return this.customerService.deleteCustomer(id, userId);
+        return this.customerService.deleteCustomer(userId, id);
     }
 }

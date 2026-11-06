@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Res, UseGuards, Req, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Res, UseGuards, Req, HttpCode, HttpStatus, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Response, Request } from 'express';
 import { AuthService } from './auth.service.js';
@@ -82,13 +82,26 @@ export class AuthController {
 
   @UseGuards(AuthGuard)
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateAuthDto: updateUserDtos) {
-    return this.authService.updateUser(id, updateAuthDto);
+  update(
+    @Param('id') id: string,
+    @Body() updateAuthDto: updateUserDtos,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    if (id !== req.user.sub) throw new ForbiddenException();
+    return this.authService.updateUser(req.user.sub, updateAuthDto);
   }
 
   @UseGuards(AuthGuard)
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.authService.deleteUser(id);
+  async remove(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    if (id !== req.user.sub) throw new ForbiddenException();
+    const user = await this.authService.deleteUser(req.user.sub);
+    res.clearCookie(AUTH_COOKIE_NAME);
+    res.clearCookie(REFRESH_COOKIE_NAME);
+    return user;
   }
 }

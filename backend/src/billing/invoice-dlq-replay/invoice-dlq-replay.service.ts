@@ -22,15 +22,23 @@ export class InvoiceDlqReplayService {
   /**
    * Replays a single permanently failed job from the DLQ, passing the full context payload
    */
-  async replayJob(dlqRecordId: string): Promise<{ success: boolean; newQueueJobId: string }> {
+  async replayJob(
+    dlqRecordId: string,
+    userId: string,
+  ): Promise<{ success: boolean; newQueueJobId: string }> {
     this.logger.log(`Initiating manual replay for DLQ Record ID: ${dlqRecordId}`);
 
     // 1. Fetch DLQ record
-    const dlqRecord = await this.prisma.invoiceJobDlq.findUnique({
+    const dlqRecord = await this.prisma.invoiceJobDlq.findFirst({
       where: { id: dlqRecordId },
+      include: {
+        invoiceJob: {
+          include: { billingOperation: { select: { userId: true } } },
+        },
+      },
     });
 
-    if (!dlqRecord) {
+    if (!dlqRecord || dlqRecord.invoiceJob.billingOperation.userId !== userId) {
       throw new NotFoundException(`DLQ record with ID ${dlqRecordId} not found`);
     }
 
@@ -43,7 +51,7 @@ export class InvoiceDlqReplayService {
     const { invoiceJobId } = dlqRecord;
 
     // 2. Fetch the target business job to obtain relational contexts needed by the queue processor
-    const invoiceJob = await this.prisma.invoiceJob.findUnique({
+    const invoiceJob = await this.prisma.invoiceJob.findFirst({
       where: { id: invoiceJobId },
     });
 

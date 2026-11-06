@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { customerDtos } from './dto/customer.dto.js';
 import { Customer } from '../../generated/prisma/client.js'
@@ -36,6 +36,15 @@ export class CustomerService {
         if (!user) throw new NotFoundException('User not found');
         const customer = await this.prisma.customer.findFirst({ where: { id:id , userId: userId } });
         if(!customer) throw new NotFoundException('Customer not found or Access Denied');
+
+        const [invoiceCount, jobCount] = await Promise.all([
+            this.prisma.invoice.count({ where: { customerId: id } }),
+            this.prisma.invoiceJob.count({ where: { customerId: id } }),
+        ]);
+        if (invoiceCount || jobCount) {
+            throw new ConflictException('Customers with invoice history cannot be deleted.');
+        }
+
         const deletedCustomer = await this.prisma.customer.delete({ where: { id } });
         return deletedCustomer
     }

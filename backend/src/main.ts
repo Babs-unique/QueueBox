@@ -10,6 +10,10 @@ import cookieParser from 'cookie-parser';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const config = app.get(ConfigService);
+  app.enableCors({
+    origin: config.get<string>('FRONTEND_URL') ?? 'http://localhost:8443',
+    credentials: true,
+  });
   app.useGlobalInterceptors(new TransformInterceptor());
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true,

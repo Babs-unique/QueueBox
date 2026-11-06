@@ -21,6 +21,62 @@ export class BillingService {
     });
   }
 
+  async findOperations(userId: string) {
+    return this.prisma.billingOperation.findMany({
+      where: { userId },
+      include: { _count: { select: { invoiceJobs: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async findOperation(userId: string, id: string) {
+    const operation = await this.prisma.billingOperation.findFirst({
+      where: { id, userId },
+      include: {
+        _count: { select: { invoiceJobs: true } },
+        invoiceJobs: {
+          include: {
+            customer: { select: { id: true, name: true, email: true } },
+            invoice: true,
+            invoiceJobDlq: true,
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    });
+    if (!operation) throw new NotFoundException('Billing operation not found');
+    return operation;
+  }
+
+  async findInvoices(userId: string) {
+    return this.prisma.invoice.findMany({
+      where: { customer: { userId } },
+      include: {
+        customer: { select: { id: true, name: true, email: true } },
+        invoiceJobs: {
+          where: { billingOperation: { userId } },
+          select: { id: true, billingOperationId: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async findInvoiceJobs(userId: string) {
+    return this.prisma.invoiceJob.findMany({
+      where: { billingOperation: { userId } },
+      include: {
+        customer: { select: { id: true, name: true, email: true } },
+        billingOperation: {
+          select: { id: true, billingPeriod: true, status: true },
+        },
+        invoice: true,
+        invoiceJobDlq: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async create(
     billingDtos: billingDtos,
     userId: string,
