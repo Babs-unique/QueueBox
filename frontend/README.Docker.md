@@ -1,22 +1,10 @@
-### Building and running your application
+# Frontend Docker setup
 
-When you're ready, start your application by running:
-`docker compose up --build`.
+The checked-in frontend Docker setup is a development template, but it does not currently run as configured:
 
-Your application will be available at http://localhost:5173.
+- The Dockerfile runs `npm ci --omit=dev`, but Vite is a development dependency, so `npm run dev` does not have its executable installed.
+- The Compose file publishes host port `5173` to container port `5173`, while Vite's default port is `8443`.
 
-### Deploying your application to the cloud
+For local development, use `npm run dev` on the host as described in the [frontend guide](./README.md). To make the container setup usable, install development dependencies in the Dockerfile and either set `PORT=5173` in the container environment or change the Compose port mapping to match Vite's port.
 
-First, build your image, e.g.: `docker build -t myapp .`.
-If your cloud uses a different CPU architecture than your development
-machine (e.g., you are on a Mac M1 and your cloud provider is amd64),
-you'll want to build the image for that platform, e.g.:
-`docker build --platform=linux/amd64 -t myapp .`.
-
-Then, push it to your registry, e.g. `docker push myregistry.com/myapp`.
-
-Consult Docker's [getting started](https://docs.docker.com/go/get-started-sharing/)
-docs for more detail on building and pushing.
-
-### References
-* [Docker's Node.js guide](https://docs.docker.com/language/nodejs/)
+The frontend Dockerfile is not a production static-site deployment configuration.

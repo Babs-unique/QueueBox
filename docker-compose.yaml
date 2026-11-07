@@ -1,0 +1,87 @@
+version: '3.8'
+services:
+  server:
+    build:
+      context: ./backend
+    env_file:
+      - ./backend/.env
+    command: npm run start:dev
+    environment:
+      NODE_ENV: development
+    ports:
+      - "3030:3030"
+    depends_on:
+      db:
+        condition: service_healthy
+    develop:
+      watch:
+        # Watch backend source files
+        - action: sync
+          path: ./backend/src
+          target: /usr/src/app/src
+          initial_sync: true
+        # Rebuild when dependencies change
+        - action: rebuild
+          path: ./backend/package.json
+        - action: rebuild
+          path: ./backend/package-lock.json
+        # Watch Prisma files
+        - action: sync
+          path: ./backend/prisma
+          target: /usr/src/app/prisma
+          initial_sync: true
+  web:
+    build:
+      context: ./frontend
+    env_file:
+      - ./frontend/.env
+    depends_on:
+      - server
+    environment:
+      NODE_ENV: development
+    ports:
+      - "5173:5173"
+    develop:
+      watch:
+        # Rebuild when frontend dependencies change
+        - action: rebuild
+          path: ./frontend/package.json
+        - action: rebuild
+          path: ./frontend/package-lock.json
+        # Sync frontend changes
+        - action: sync
+          path: ./frontend
+          target: /app
+  db:
+    image: postgres:16-alpine
+    restart: always
+    env_file:
+      - ./backend/.env
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  redis:
+        image: redis:latest
+        container_name: my-redis
+        ports:
+            - '6379:6379'
+        volumes:
+            - redis-data:/data
+        environment:
+            - REDIS_ARGS="--requirepass ${REDIS_PASSWORD} --appendonly yes"
+        restart: unless-stopped
+
+volumes:
+  db-data:
+  redis-data:
+      driver: local

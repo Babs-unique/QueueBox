@@ -1,22 +1,25 @@
-### Building and running your application
+# Backend Docker setup
 
-When you're ready, start your application by running:
-`docker compose up --build`.
+The [`compose.yaml`](./compose.yaml) file starts PostgreSQL and Redis only. It does not build or run the NestJS API or worker; run those with the npm scripts in the [backend guide](./README.md).
 
-Your application will be available at http://localhost:3040.
+## Start the local dependencies
 
-### Deploying your application to the cloud
+From `backend/`, provide the Compose variables `DB_USER`, `DB_PASSWORD`, `DB_NAME`, and `REDIS_PASSWORD`, then run:
 
-First, build your image, e.g.: `docker build -t myapp .`.
-If your cloud uses a different CPU architecture than your development
-machine (e.g., you are on a Mac M1 and your cloud provider is amd64),
-you'll want to build the image for that platform, e.g.:
-`docker build --platform=linux/amd64 -t myapp .`.
+```bash
+docker compose up -d
+```
 
-Then, push it to your registry, e.g. `docker push myregistry.com/myapp`.
+PostgreSQL is published on host port `5434` and Redis on `6379`. The PostgreSQL container listens internally on `5432`; use the host port in a local `DATABASE_URL`, for example `localhost:5434`. Configure the backend's Redis settings to match the Redis container, including the same password.
 
-Consult Docker's [getting started](https://docs.docker.com/go/get-started-sharing/)
-docs for more detail on building and pushing.
+To stop the services without deleting persisted data:
 
-### References
-* [Docker's Node.js guide](https://docs.docker.com/language/nodejs/)
+```bash
+docker compose down
+```
+
+The database and Redis data are stored in named Docker volumes. Removing volumes is destructive and will delete the local data.
+
+## API image
+
+The backend Dockerfile builds the NestJS application and starts the compiled API. The application defaults to port `3000`, while the image declares `3040` as its exposed port; set `PORT=3040` in the container environment when using that declared port. The API image also needs reachable PostgreSQL and Redis services and the required backend environment variables. The Compose file in this directory does not configure or launch that API image.

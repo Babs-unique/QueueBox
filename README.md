@@ -12,7 +12,7 @@ QueueBox is a billing operations application. Users manage customers and submit 
 - Node.js 22 or newer and npm
 - Docker Desktop (or PostgreSQL and Redis running locally)
 
-Install dependencies separately in each application directory. No dependency installation is performed by this documentation.
+Install dependencies separately in each application directory using the commands below.
 
 ## Local development
 
@@ -58,7 +58,7 @@ Billing submission requires an `X-Idempotency-Key` header. The API details and s
 ## Checks
 
 - Frontend production build: `cd frontend && npm run build`
-- Frontend UI tests: start the Vite server, then run `TEST_BASE_URL=http://localhost:8443 npm run test:ui` from `frontend/`
+- Frontend UI tests: start the Vite server, then run `npm run test:ui` from `frontend/` with `TEST_BASE_URL=http://localhost:8443` set in the environment (PowerShell: `$env:TEST_BASE_URL = "http://localhost:8443"`)
 - Backend build and tests: `cd backend && npm run build` and `npm test`
 
 See the [frontend guide](./frontend/README.md) and [backend guide](./backend/README.md) for application-specific commands and structure.
