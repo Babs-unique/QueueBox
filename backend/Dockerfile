@@ -34,11 +34,12 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 
 COPY --from=builder /usr/src/app/dist ./dist
+COPY --from=builder /usr/src/app/generated ./generated
 
 RUN mkdir -p storage/tmp storage/files \
     && chown -R node:node /usr/src/app
 
-EXPOSE 3040
+EXPOSE 3000
 
 USER node
 

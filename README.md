@@ -16,8 +16,10 @@ Install dependencies separately in each application directory using the commands
 
 ## Local development
 
-1. Start PostgreSQL and Redis. The backend Compose file in [`backend/`](./backend/README.Docker.md) provisions these services only.
-2. Configure the backend environment in `backend/.env`. At minimum, set `DATABASE_URL`, `JWT_ACCESS_SECRET`, and `JWT_REFRESH_SECRET`. Configure Redis with `REDIS_URL`, or with `REDIS_HOST`, `REDIS_PORT`, and optionally `REDIS_PASSWORD`. The Compose file also expects `DB_USER`, `DB_PASSWORD`, and `DB_NAME`.
+To start the full application with Docker, run `docker compose up --build` from the repository root. Open `http://localhost:8443`. The stack starts PostgreSQL, Redis, applies database migrations, and launches the API and worker. The Compose file uses local-development credentials and secrets only; override them for local use and do not use the defaults in production. See the [Docker guide](./backend/README.Docker.md).
+
+1. For direct Node.js development, start only PostgreSQL and Redis from the repository root with `docker compose up -d db redis`. PostgreSQL is available on port `5434`; Redis is available on `6379`.
+2. Configure `backend/.env` with a `DATABASE_URL` pointing to `localhost:5434`, plus `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET`. Set Redis to `localhost:6379` with `REDIS_HOST` and `REDIS_PORT`, or configure `REDIS_URL`.
 3. From `backend/`, install dependencies, generate the Prisma client, apply migrations, then start the API and worker in separate terminals:
 
    ```bash
